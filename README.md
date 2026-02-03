@@ -1,5 +1,7 @@
 <p align="center">
-  <img src="CLAY.png" alt="CLAY logo" width="200"/>
+  <img src="CLAY.png" width="180"><br>
+  <b>CLAY</b><br>
+  <i>Modeling interferometric observations of young stars</i>
 </p>
 
 # CLAY
