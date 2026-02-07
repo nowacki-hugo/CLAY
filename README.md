@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="CLAY.png" alt="CLAY logo" width="200"/>
+  <img src="CLAY.png" alt="CLAY logo" width="500"/>
 </p>
 
 # CLAY
