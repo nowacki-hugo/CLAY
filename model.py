@@ -1,20 +1,34 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Part of the CLAY code (Continuum and Line Analysis of YSOs)
-Used to model a dataset with a synthetic model
+CONTINUUM AND LINE ANALYSIS OF YSOS -- CLAY
+model.py -- Allows to fit a dataset with a predefined model
+Author : H. Nowacki  (hugo.nowacki@oca.eu)
+Version : 0.2.0 (07/2026)
+Licence : Creative Commons (CC)
+No reference for the code yet -- please contact for academic use 
 """
 import emcee
 import numpy as np
 import matplotlib.pyplot as plt
-import clay.objects as objs
-import clay.datahandling as dh
+import CLAY.objects as objs
+import CLAY.datahandling as dh
 import scipy.stats as stats
 import corner
 
-def compute_chi2():
-    chi2 = sum(  )
+def compute_chi2( data, error, model, reduced=True ):
+    N_fp = model.ndim
+    N = model.Vtot.size
+    nu = (N-1)-N_fp
+    chi2 = sum( ((data - model)/ error)**2 )
+    if reduced :
+        return chi2/nu
+    else :
+        return chi2
+
 
 def plot_chain(model, sampler):
-        labels = list(model.model.keys)
+        labels = list(model.model.Model_params.keys())
         flat_samples = sampler.get_chain()
         for x in range(model.ndim):
             figchain, ax = plt.subplots(figsize=(8, 4))
@@ -22,8 +36,9 @@ def plot_chain(model, sampler):
             ax.set_ylabel(labels[x])
         return ax
     
+    
 def plot_corner(model, sampler):
-    labels = list(model.model.keys)
+    labels = list(model.model.Model_params.keys())
     flat_samples = sampler.get_chain(discard=int(0.5*model.nsteps), thin=15, flat=True)
     results = []
     for i in range(model.ndim):
@@ -32,6 +47,7 @@ def plot_corner(model, sampler):
     figc = corner.corner(flat_samples, quantiles=[0.16,0.5,0.84], labels=labels,show_titles=True, title_fmt=".4f",
                      truths=[*results])
     return figc
+
 
 def get_bestModel(model, sampler):
     flat_samples = sampler.get_chain(discard=int(0.5*model.nsteps), thin=15, flat=True)
@@ -44,8 +60,8 @@ def get_bestModel(model, sampler):
         results.append(mcmc[1])
         m_error.append(mcmc[1]-mcmc[0])
         p_error.append(mcmc[2]-mcmc[1])
-    dict_params = { i:n for i,n in zip( model.model.keys,results ) }
-    bestmodel = objs.model(model.u, model.v, model.Lambda, model.model.model, dict_params)
+    dict_params = { i:n for i,n in zip( model.model.Model_params.keys(),results ) }
+    bestmodel = objs.model(model.u, model.v, model.wvl, model.model.model, dict_params)
     return ( bestmodel )
 
 # def eval_model(model):
@@ -74,14 +90,17 @@ def get_bestModel(model, sampler):
 
 
 class fitter:
-    ### A class that gathers data and model to eventually fit the model to the data
-    ### methods to : initialize priors, run a fit, NOT plot the results
-    ### interesting Plots :
-    ### Data alone / Model alone / Model vs data (ALL PRIOR TO FIT, "fit" CLASS OTHERWISE)
+    """
+    A class that gathers data and model to eventually fit the model to the data
+    methods to : initialize priors, run a fit, NOT plot the results
+    interesting Plots :
+    Data alone / Model alone / Model vs data 
+    The "fit" class is the one suited to recover results from a past fit
+    """
     def __init__(self, data, model):
-        self.u, self.v = data.u*1e6, data.v*1e6
+        self.u, self.v = data.u, data.v
         self.freqs, self.freqsCP = data.freqs, data.freqsCPhi
-        self.Lambda = data.Lambda
+        self.wvl = data.wvl
         self.BL_idx, self.TR_idx = data.BL_idx, data.TR_idx
         self.Vtotmod = model.Vtot
         self.V2dat, self.e_V2dat = data.V2, data.e_V2
@@ -91,9 +110,9 @@ class fitter:
     # self.args = (argx, argy, arge)
     
     def __log_likelihood(self, params, x, ydat, yerr):
-        dict_params = {i:n for i,n in zip(self.model.keys,params)}
-        # print(dict_params["la"])
-        upd_mod = objs.model(self.u, self.v, self.Lambda, self.model.model, dict_params)
+        dict_params = {i:n for i,n in zip(self.model.Model_params.keys(),params)}
+        upd_mod = objs.model(self.u, self.v, self.wvl, self.model.model, dict_params )
+        
         if not( ('V2' in self.fitted) or ('CPhi' in self.fitted)):
             print('Nothing to fit, need V2 or CPhi, or both.')
         elif not ('V2' in self.fitted) :
@@ -104,6 +123,7 @@ class fitter:
         else :
             _, CP = objs.compute_CPhi( self.freqs, upd_mod.Vtot, self.BL_idx, self.TR_idx )
             ymod = np.concatenate( ((abs(upd_mod.Vtot)**2).flatten(), CP.flatten()) )
+        
         
         pr = -0.5*np.sum( (ydat-ymod)**2 / yerr**2 )
         return pr
@@ -121,13 +141,15 @@ class fitter:
         return lp + self.__log_likelihood( params, x, y, yerr )
     
     def prepare_run( self, nwalkers, nsteps, pos_init=[], prior=[], lims=[], sigma=[], fitted=['V2','CPhi'] ):
-        ### nwalkers [int] (1) = number of walkers used.
-        ### nstep [int] (1) = number of steps performed by each walker overall.
-        ### pos_init [float] (Nparams) = [pos1, pos2] list of values taken as initial guess for each parameter 
-        ### prior[str] (Nparams/1) = [prior1, prior2]  string or list of string detailing the priors applied 
-        ###                                 to each parameter (list) or for all (str). Possible values
-        ###                                 include "gaussian" or "uniform".
-        ### sigma [float] (Nparams) = Gaussian dispersion around the initial guess (not used for "uniform").
+        """
+        nwalkers [int] (1) = number of walkers used.
+        nstep [int] (1) = number of steps performed by each walker overall.
+        pos_init [float] (Nparams) = [pos1, pos2] list of values taken as initial guess for each parameter 
+        prior[str] (Nparams/1) = [prior1, prior2]  string or list of string detailing the priors applied 
+                                         to each parameter (list) or for all (str). Possible values
+                                         include "gaussian" or "uniform".
+        sigma [float] (Nparams) = Gaussian dispersion around the initial guess (not used for "uniform").
+        """
         self.nwalkers, self.nsteps = nwalkers, nsteps 
         self.pos_init = pos_init
         self.ndim = len(pos_init.values())
@@ -167,7 +189,7 @@ class fitter:
         
         self.args = ( argsx, argsy, argse )
     
-    def run_fit(self, filename = "CLAY_MCMC_Run.h5") :
+    def run_fit(self, filename="CLAY_MCMC_Run.h5") :
         backend = emcee.backends.HDFBackend( filename )
         backend.reset( self.nwalkers, self.ndim )
         sampler = emcee.EnsembleSampler( self.nwalkers, self.ndim, self.__log_probability, args=self.args )
@@ -175,13 +197,16 @@ class fitter:
         return sampler
 
     # def set_fixed_params(self, params={}):
-    #     self.free_params
+    #     for key in params.keys :
+    #         if params[key] in self.params.keys
     
     # def set_free_params(self, params={}):
     #     self.free_params
 
+
 class fit:
-    ### A class that recovers the result file from a previous fit to play with it
-    ### 
+    """
+    A class that recovers the result file from a previous fit to play with it
+    """ 
     def __init__(self, file_path):
         self.fpath = file_path

@@ -1,7 +1,13 @@
-### Continuum and Line Analysis of YSOs (CLAY)
-### Author : H. Nowacki
-### Version : 0.1
-### Licence : Creative Commons (CC)
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+CONTINUUM AND LINE ANALYSIS OF YSOS -- CLAY
+objects.py -- Allows to create basic objects and synthetic data
+Author : H. Nowacki  (hugo.nowacki@oca.eu)
+Version : 0.2.0 (07/2026)
+Licence : Creative Commons (CC)
+No reference for the code yet -- please contact for academic use 
+"""
 
 import numpy as np
 import scipy.constants as csts
@@ -13,9 +19,9 @@ from itertools import combinations
 G_SI = csts.G       # SI
 G_cgs = G_SI*1000   # cgs
 c = csts.c/1000     # km/s
-Msun = 1.989E30     # kg
-Rsun = 696342000    # m
-year = 31540000     # sec
+MSUN = 1.989E30     # kg
+RSUN = 696342000    # m
+YEAR = 31540000     # sec
 
 def daysToSec(days):
     sec = days*86400
@@ -46,8 +52,9 @@ def compute_CPhi( freqs, Vtot, BL_idx, TR_idx ):
             f.append(freqs[:,i,:])
         i = np.argmax( np.asarray(f).mean(axis=(1,2)) )
         cp = c[0] + c[1] - c[2]
+        # print(np.shape(Phi),np.shape(c), np.shape(cp))
         freqsCPhi.append( f[i] ), CPhi.append(cp)
-        
+    
     freqsCPhi = np.transpose(np.asarray(freqsCPhi),(1,0,2))
     CPhi = np.transpose(np.asarray(CPhi),(1,0,2))
     
@@ -55,39 +62,49 @@ def compute_CPhi( freqs, Vtot, BL_idx, TR_idx ):
 
 
 class YSO:
-    ### Define the protostar itself and its properties
-    ### props is a dictionary listing stellar properties
-    ### Need : a series of methods that derive some other properties (Rco, Rt, ...)
+    """
+    Define the protostar itself and its properties
+    Input :
+        'params' is a dictionary listing stellar properties
+    Need : a series of methods that derive some other properties (Rco, Rt, ...)
+    """
     def __init__(self, params: dict):
         self.expected_keys = ["M", "e_M", "R", "e_R", "Prot", "e_Prot", "Bdip", "e_Bdip", "Mdot", "e_Mdot"]
-        # Pour chaque clé attendue, on initialise un attribut
-        # soit avec la valeur donnée dans le dictionnaire,
-        # soit avec None si la clé n'existe pas.
+        """
+        # For each expected key, an attribute is initialized,
+        # either with the value from 'params',
+        # or with None if the key is not in 'params'
+        """
         for key in self.expected_keys:
             setattr(self, key, params.get(key, None))
     
-    ### Allows to modify a value
     def setParam(self, key, value):
         if key in (self.expected_keys) :
             setattr(self, key, value)
         else :
-            print(f'Key "{key}" not recognized, try "expected_keys"')
+            raise ValueError(f'Key "{key}" not recognized, try "expected_keys"')
         
     
-    ### Computes the corotation radius (i.e. radius at which Keplerian orbit matches rotation rate)
     def compute_Rco(self):
+        """
+        Computes the corotation radius (i.e. radius at which Keplerian orbit matches rotation rate)
+
+        """
         if not (self.M and self.R and self.Prot) :
-            self.Rco, self.e_Rco = None, None
-            print("Not enough params for Rco,\n"
+            raise ValueError("Not enough params for Rco,\n"
                   "Need : M, R, Prot and their errors \n"
                   "Set to default = None")
         else :
-            self.Rco = (G_SI*self.M*Msun*daysToSec(self.Prot)**2/(4*np.pi**2))**(1/3)/(self.R*Rsun)
+            self.Rco = (G_SI*self.M*MSUN*daysToSec(self.Prot)**2/(4*np.pi**2))**(1/3)/(self.R*RSUN)
             self.e_Rco = self.Rco * np.sqrt( (self.e_M/self.M/3)**2 + (self.e_Prot/self.Prot*2/3)**2 +(self.e_R/self.R)**2 )
+            return self.Rco, self.e_Rco
     
-    ### Computes the truncation radius, where gas pressure equals magnetic pressure. 
-    ### i.e. where the material is lifted up from the disk's midplane
     def compute_Rt(self, method='P'):
+        """
+        Computes the truncation radius, where gas pressure equals magnetic pressure. 
+        i.e. where the material is lifted up from the disk's midplane
+        Method == 'P' uses Pantolmos+ (in prep.) prescription, 'B' uses Bessolaz et al. (2008)
+        """
         if ((method != 'B') and (method != 'P')):
             print("Method not recognized, either 'B' or 'P'. \n"
                   "Assumed to be 'P' in the following.")
@@ -105,13 +122,14 @@ class YSO:
             if not (self.M and self.e_M and self.R and self.e_R and self.Mdot and self.e_Mdot and self.Bdip and self.e_Bdip and self.Prot and self.e_Prot):
                 print("Missing parameter (or error) to compute Rt, see doc.")
             else :
-                fs = 2*np.pi *self.R*Rsun / daysToSec(self.Prot) / np.sqrt(G_SI*self.M*Msun/(self.R*Rsun))
-                Ys = (self.Bdip/2*self.R*(Rsun*100))**2 / (4*np.pi*self.Mdot*(Msun*1000/year)) / np.sqrt(2*G_cgs*(self.M*Msun*1000)/(self.R*Rsun*100))
+                fs = 2*np.pi *self.R*RSUN / daysToSec(self.Prot) / np.sqrt(G_SI*self.M*MSUN/(self.R*RSUN))
+                Ys = (self.Bdip/2*self.R*(RSUN*100))**2 / (4*np.pi*self.Mdot*(MSUN*1000/YEAR)) / np.sqrt(2*G_cgs*(self.M*MSUN*1000)/(self.R*RSUN*100))
                 dfs = fs* np.sqrt( (3/2*self.e_R/self.R)**2 + (1/2*self.e_M/self.M)**2 + (self.e_Prot/self.Prot)**2 )
                 dYs = Ys* np.sqrt((5/2*self.e_R/self.R)**2 + (2*self.e_Bdip/self.Bdip)**2 + (self.e_Mdot/self.Mdot)**2 + (1/2*self.e_M/self.M)**2)
                 self.Rt = 0.88 * fs**(-0.57) * Ys**(0.057)
                 self.e_Rt = self.Rt * np.sqrt( (0.57*dfs/fs)**2 + (0.057*dYs/Ys)**2 )
-                
+
+        return self.Rt, self.e_Rt
                 
                 
     def __repr__(self):
@@ -130,67 +148,60 @@ class YSO:
 #         # Function that extracts everything needed, depending on "dorigin"
 
 
+
 class model :
-    ### Allows to compute synthetic observations
-    ### Allows to fit a dataset with a given model
-    ### Needs : rings, disk, Gaussian, Lorentzian, ...
-    def __init__(self, u=[], v=[], Lambda=np.linspace(1.9e-6, 2.4e-6, 51), model='Lazar', params={}):
-        # if specComp == "Line":
-        #     ### Do whatever
-        # elif specComp == "Cont":
-        #     ### Do whatever else
-        # else:
-        #     print('Spectral component unknown. Either "Line" or "Cont".')
-        self.params = params
-        self.model = model
-        self.keys = params.keys()
-        self.Lambda = Lambda
-        self.type = self.params.get("type", 'Lazar')
-        self.wl0 = self.params.get("wl0", self.Lambda.mean())
-        if ( np.shape(u)==(0,) or np.shape(v)==(0,) ) :
-            self.u = np.linspace(-150,150,101)/self.wl0
-            self.v = np.linspace(-150,150,101)/self.wl0
-            self.uu, self.vv = np.meshgrid(self.u,self.v)
-            self.Lambda = self.wl0*np.ones((51))
+    """
+    Allows to compute synthetic observations
+    Can be fitted to a dataset
+    Needs : point, background, rings, disk, Gaussian, Lorentzian, ...
+    """
+    def __init__(self, u=None, v=None, wvl=None, model=None, params={}):
+        if type(wvl) == None :
+            self.wvl = 2.16e-6
+            self.wvl0 = 2.16e-6
         else :
-            self.u, self.v = u, v
-            self.uu, self.vv = self.u,self.v 
-        
+            self.wvl = wvl
+            self.wvl0 = np.nanmean(self.wvl)
+        if type(u) == None  :
+            self.u = np.linspace(-150,150,101)/self.wl0 # Unit = 1/rad
+        else :
+            self.u = u
+        if type(v) == None :
+            self.v = np.linspace(-150,150,101)/self.wl0 # Unit = 1/rad
+        else :
+            self.v = v
+            
+        self.uu, self.vv = np.meshgrid(self.u,self.v)
         self.freqs = np.hypot( self.u, self.v )
-        self.fs = self.params.get("fs", 0.6)
-        self.fc = self.params.get("fc", 0.3)
-        self.fh = 1 - ( self.fc + self.fs )
-        self.la = self.params.get("la", None)
-        self.lk = self.params.get("lk", None)
-        if not ( self.la and self.lk ):
-            self.a = mas2rad(self.params.get("a", 1.5))
-            # self.la = np.log10(rad2mas(self.a))
+        
+        if type(model) == dict :
+            self.modeltype = model.get("type",'Cont')
+            self.model = model.get('model')
+        
         else :
-            kr = 10.0 **self.lk
-            ar = 10**self.la / (np.sqrt(1 + kr**2))
-            ak = ar * kr
-            self.ar, self.a = mas2rad(ar), mas2rad(ak)
-        self.flor = self.params.get("flor", 0)
-        self.pa = self.params.get("pa", 0)
-        self.inc = self.params.get("inc", 0)
-        self.x0 = mas2rad(self.params.get("x0", 0))
-        self.y0 = mas2rad(self.params.get("y0", 0))
-        self.ks = self.params.get("ks", 1)
-        self.kc = self.params.get("kc", 0)
-        self.c1 = self.params.get("c1", 0)
-        self.s1 = self.params.get("s1", 0)
-                
+            self.modeltype = 'Cont'
+            self.model = model
+        
+        
         
         if model=='Punct' :
-            self.Vtot = self.__pointSource()
-            self.Model_params = {"x0":self.x0,"y0":self.y0}
+            self.params = {'x0':params.get("x0",0), 'y0':params.get("y0",0)}
+            self.keys = self.params.keys
+            self.Vtot = self.__pointSource(params)
+            
         elif model =='LDD' :
-            self.Vtot = self.__sqrtLD(self.params)
+            self.Vtot = self.__sqrtLD(params)
+            self.params = {}
+            self.keys = {}
+            
         elif model=='Ellip' :
             self.Vtot = self.__Ellipsoid()
             self.Model_params = {"x0":self.x0,"y0":self.y0,"flor":self.flor,"a":self.a,"inc":self.inc,"pa":self.pa}
+        
         elif model=='Sharp' :
+            ### TO BE FIXED
             self.Vtot = self.__sharpDisk()
+        
         elif model=='Ring' :
             Vr = self.__elongRing()
             self.Model_params = {"x0":self.x0,"y0":self.y0,"a":self.a,"inc":self.inc,"pa":self.pa,"c1":self.c1,"s1":self.s1}
@@ -213,19 +224,20 @@ class model :
         elif model=='Unif' :
             self.Vtot = self.__UniformDisk()
             self.Model_params = {"x0":self.x0,"y0":self.y0,"a":self.a,"inc":self.inc,"pa":self.pa,"c1":self.c1,"s1":self.s1}
+        
         elif model=='Lazar' :
-            self.Vtot = self.__Lazareff()
-            self.Model_params = {"x0":self.x0,"y0":self.y0,"la":self.la, "lk":self.lk,"inc":self.inc,"pa":self.pa,"c1":self.c1,"s1":self.s1}
+            self.Model_params = {"fs":params.get('fs',0),"fc":params.get('fc',0),"la":params.get('la',0), "lk":params.get('lk',0),"inc":np.deg2rad(params.get('inc',0)),"pa":np.deg2rad(params.get('pa',0)),"c1":params.get('c1',0),"s1":params.get('s1',0), "kc":params.get('kc',-1.6), "flor":params.get('flor',1)}    
+            self.Vtot = self.__Lazareff(params)
         else :
             print('Model not recognized, set to "Lazar".')
             print('Possible models : "Punct", "Ellip", "Sharp", "Ring", "Unif" or "Lazar"')
         
-            
-    
         
     def __shiftFourier(self, Vc_in, x0, y0):
-        """Shift the image (apply a phasor in Fourier space)."""
-        Vc_out = Vc_in * np.exp(-2j * np.pi * (self.uu * x0 + self.vv * y0))
+        """
+        Shift the image (apply a phasor in Fourier space).
+        """
+        Vc_out = Vc_in * np.exp(-2j * np.pi * (self.u * x0 + self.v * y0))
         return Vc_out
     
     def __pointSource(self, params={}):
@@ -236,24 +248,25 @@ class model :
         x0, y0: {float}
             Shift along x and y position [rad].
         """
-        x0, y0 = mas2rad(params.get("x0", rad2mas(self.x0))), mas2rad(params.get("y0", rad2mas(self.y0)))
-        Vc_centered = np.ones(self.uu.shape)
+        x0, y0 = mas2rad(params.get("x0", 0)), mas2rad(params.get("y0", 0))
+        Vc_centered = np.ones(self.u.shape)
         Vc = self.__shiftFourier( Vc_centered, x0, y0 )
         return Vc
     
     def __elongLorentz(self, params={}):
         """
         Return the complex visibility of an ellongated Lorentzian
-        of size a cosi (a is the radius),
-        position angle PA, East from North.
+        of size a along the major axis = PA, 'a' is the radius
+        and a x cos(i) along the minor axis, 'i' the inclination
+        position angle PA, from North to East.
         """
-        a = mas2rad(params.get("a", rad2mas(self.a)))
-        inc, pa = np.deg2rad(params.get("inc", self.inc)), np.deg2rad(params.get("pa", self.pa))
-        x0, y0 = params.get("x0", self.x0), params.get("y0", self.y0)
+        a = mas2rad(params.get("a", 1))
+        inc, pa = np.deg2rad(params.get("inc", 0)), np.deg2rad(params.get("pa", 0))
+        x0, y0 = params.get("x0", 0), params.get("y0", 0)
         
         rPA = np.pi/2 - pa
-        uM = self.uu * np.cos(rPA) - self.vv * np.sin(rPA)
-        um = self.uu * np.sin(rPA) + self.vv * np.cos(rPA)
+        uM = self.u * np.cos(rPA) - self.v * np.sin(rPA)
+        um = self.u * np.sin(rPA) + self.v * np.cos(rPA)
         aq = np.sqrt( ( a*uM )**2 + ( a*um*np.cos(inc) )**2 )
         Vc = np.exp( -( 2*np.pi*aq )/np.sqrt(3) )
         if ((x0 != 0) or (y0 != 0)):
@@ -267,13 +280,13 @@ class model :
         of size a cosi (a is the radius),
         position angle PA, East from North.
         """
-        a = mas2rad(params.get("a", rad2mas(self.a)))
-        inc, pa = np.deg2rad(params.get("inc", self.inc)), np.deg2rad(params.get("pa", self.pa))
-        x0, y0 = mas2rad(params.get("x0", rad2mas(self.x0))), mas2rad(params.get("y0", rad2mas(self.y0)))
+        a = mas2rad(params.get("a", 1))
+        inc, pa = np.deg2rad(params.get("inc", 0)), np.deg2rad(params.get("pa", 0))
+        x0, y0 = mas2rad(params.get("x0", 0)), mas2rad(params.get("y0", 0))
         
         rPA = np.pi/2 - pa
-        uM = self.uu * np.cos(rPA) - self.vv * np.sin(rPA)
-        um = self.uu * np.sin(rPA) + self.vv * np.cos(rPA)
+        uM = self.u * np.cos(rPA) - self.v * np.sin(rPA)
+        um = self.u * np.sin(rPA) + self.v * np.cos(rPA)
         aq2 = ( a*uM )**2 + ( a*um*np.cos(inc) )**2
         
         Vc = np.exp(-np.pi**2 * aq2 / (np.log(2)))
@@ -288,14 +301,14 @@ class model :
         Return the complex visibility of an elongated ring
         of size a.cos(i) & position angle PA, East from North
         """
-        a = mas2rad(params.get("a", rad2mas(self.a)))
-        inc, pa = np.deg2rad(params.get("inc", self.inc)), np.deg2rad(params.get("pa", self.pa))
-        c1, s1 = params.get("c1", self.c1), params.get("s1", self.s1)
-        x0, y0 = mas2rad(params.get("x0", rad2mas(self.x0))), mas2rad(params.get("y0", rad2mas(self.y0)))
+        a = mas2rad(params.get("a", 1))
+        inc, pa = np.deg2rad(params.get("inc", 0)), np.deg2rad(params.get("pa", 0))
+        c1, s1 = params.get("c1", 0), params.get("s1", 0)
+        x0, y0 = mas2rad(params.get("x0", 0)), mas2rad(params.get("y0", 0))
         # Squeeze and rotation
         rPA = np.pi/2 - pa
-        uM = self.uu * np.cos(rPA) - self.vv * np.sin(rPA)
-        um = self.uu * np.sin(rPA) + self.vv * np.cos(rPA)
+        uM = self.u * np.cos(rPA) - self.v * np.sin(rPA)
+        um = self.u * np.sin(rPA) + self.v * np.cos(rPA)
         # Polar coordinates (check angle)
         z = 2.0 * np.pi * a * np.hypot(uM, um*np.cos(inc))
         psi = np.arctan2(um, uM)
@@ -325,7 +338,7 @@ class model :
             Hybridation between purely gaussian (flor=0)
             and Lorentzian radial profile (flor=1).
         """
-        flor = params.get("flor", self.flor)
+        flor = params.get("flor", 1)
         Vgauss = self.__elongGauss(params)
         Vlor = self.__elongLorentz(params) 
         Vc = (1 - flor) * Vgauss + flor * Vlor
@@ -351,8 +364,8 @@ class model :
         # x0, y0 = mas2rad(params.get("x0", rad2mas(self.x0))), mas2rad(params.get("y0", rad2mas(self.y0)))
         params_ker = params.get("params_ker", {"a":rad2mas(self.a)/3})
         rPA = np.pi/2 - pa
-        uM = self.uu * np.cos(rPA) - self.vv * np.sin(rPA)
-        um = self.uu * np.sin(rPA) + self.vv * np.cos(rPA)
+        uM = self.u * np.cos(rPA) - self.v * np.sin(rPA)
+        um = self.u * np.sin(rPA) + self.v * np.cos(rPA)
         aq2 = ( mas2rad(params_ker["a"])*uM )**2 + ( mas2rad(params_ker["a"])*um*np.cos(inc) )**2
         
         Vker = np.exp(-np.pi**2 * aq2 / (np.log(2)))
@@ -378,8 +391,8 @@ class model :
         x0, y0 = mas2rad(params.get("x0", rad2mas(self.x0))), mas2rad(params.get("y0", rad2mas(self.y0)))
         
         rPA = np.pi/2 - pa
-        uM = self.uu * np.cos(rPA) - self.vv * np.sin(rPA)
-        um = self.uu * np.sin(rPA) + self.vv * np.cos(rPA)
+        uM = self.u * np.cos(rPA) - self.v * np.sin(rPA)
+        um = self.u * np.sin(rPA) + self.v * np.cos(rPA)
         r = np.hypot( diam*uM , diam*um*np.cos(inc) )
         
         Vc = 2 * special.j1(np.pi * r * diam) / (np.pi * r * diam)
@@ -397,18 +410,18 @@ class model :
         -------
         LDD: {float}
             Limb-darkened diameter of the disk [mas],\n
-        A, B: {float}
+        c, d: {float}
             Linear and square root limb darkening coefficients, respectively [no_unit].
         """
-        nu = np.sqrt(self.uu**2 + self.vv**2)
-        R = mas2rad(params.get("LDD", 1)/2)
+        nu = np.hypot( self.uu, self.vv )
+        R = mas2rad(params.get("LDD", 1))/2
         alpha = 2*np.pi*nu*R
-        A, B = params.get("A", -0.1445), params.get("B", 0.7511)
+        c, d = params.get("c", -0.1445), params.get("d", 0.7511)
         
-        unif_term = (1-A-B)*special.j1(alpha)/alpha
-        linr_term = A*(np.sin(alpha)-alpha*np.cos(alpha))/alpha**3
-        sqrt_term = B*special.gamma(5/4)*2**(1/4)*special.jv(5/4,alpha)/alpha**(5/4)
-        denom = (1-A-B)/2 + A/3 + 2*B/5
+        unif_term = (1-c-d) * special.jv(1, alpha)/alpha                                        # i=0
+        sqrt_term = d * 2**(1/4) * special.gamma(5/4) * special.jv(5/4,alpha) / alpha**(5/4)    # i=1
+        linr_term = c * 2**(2/4) * special.gamma(3/2) * special.jv(3/2,alpha) / alpha**(3/2)    # i=2
+        denom = (1-c-d)/2 + c/3 + 2*d/5 
         
         Vc = (unif_term+linr_term+sqrt_term)/denom
         
@@ -440,31 +453,29 @@ class model :
         `c1`, `s1` {float}:
             Cosine and sine amplitude for the mode 1 (azimutal changes),\n
         """
-        wl0, Lambda = params.get("wl0", self.wl0), params.get("Lambda", self.Lambda)
-        ks, kc = params.get("ks", self.ks), params.get("kc", self.kc)
-        fs, fc = params.get("fs", self.fs), params.get("fc", self.fc)
+        wvl0, wvl = params.get("wvl0", self.wvl0), params.get("wvl", self.wvl)
+        ks, kc = params.get("ks", -1.2), params.get("kc", 0)
+        fs, fc = params.get("fs", 0.5), params.get("fc", 0.5)
         # fh = params.get("fh", 1-(fs+fc))
-        la, lk = params.get("la", self.la), params.get("lk", self.lk)
+        la, lk = params.get("la", 1), params.get("lk", 0)
         
-        kr = 10.0 ** (lk)
-        ar = 10**la / np.sqrt(1 + kr**2)
+        kr = 10.**lk
+        ar = 10.**la / np.sqrt(1 + kr**2)
         ak = ar * kr
-        # print( ak, ar )
         params_ker = {"a":ak} 
         params_ring = {"a":ar}
         Vkernel = self.__Ellipsoid(params_ker)    
         Vring = self.__elongRing(params_ring) * Vkernel
         
-        fs_lambda = fs * (wl0 / Lambda) ** ks
-        fc_lambda = fc * (wl0 / Lambda) ** kc
-        fh_lambda = (1-fs-fc) * (wl0 / Lambda) ** ks
-        
-        
-        
-        if not (Lambda.shape==(51,)) :
+        fs_lambda = fs * (wvl0 / wvl) ** ks
+        fc_lambda = fc * (wvl0 / wvl) ** kc
+        fh_lambda = (1-fs-fc) * (wvl0 / wvl) ** ks
+                
+        if not (wvl.shape==(51,)) :
             F1 = fs_lambda[:, None,:] * self.__pointSource(params)
             F2 = fc_lambda[:, None,:] * Vring
             ftot = fs_lambda + fh_lambda + fc_lambda
+            
             Vc = (F1 + F2) / ftot[:, None,:]
             return Vc.astype(complex)
         
@@ -473,6 +484,7 @@ class model :
             F2 = fc_lambda[None, None,:] * Vring[:,:,None]
             ftot = fs_lambda + fh_lambda + fc_lambda
             Vc = (F1 + F2) / ftot[None, None,:]
+            
             return Vc.astype(complex)
         
     
@@ -521,7 +533,7 @@ class model :
             xlabel, ylabel = r'u (x$10^{-6}$ rad$^{-1}$)', r'v (x$10^{-6}$ rad$^{-1}$)'
             
         fig, ax = plt.subplots()
-        pl = ax.pcolor(xaxis, yaxis, abs(self.Vtot[:,:,len(self.Lambda)//2])**2, vmin=0, vmax=1, cmap='nipy_spectral')
+        pl = ax.pcolor(xaxis, yaxis, abs(self.Vtot[:,:,len(self.wvl)//2])**2, vmin=0, vmax=1, cmap='nipy_spectral')
         ax.set_xlabel(xlabel), ax.set_ylabel(ylabel)
         ax.set_title(r'$|V|^2$ map in the u-v plan'), ax.set_xlim(xaxis.max(), xaxis.min())
         fig.colorbar(pl)
@@ -571,7 +583,7 @@ class model :
             
         fig, ax = plt.subplots()
         if self.model == 'Lazar' :
-            ax.pcolor(xaxis, yaxis, abs(np.fft.fftshift(np.fft.ifft2(self.Vtot[len(self.Lambda)//2]))), cmap='turbo')
+            ax.pcolor(xaxis, yaxis, abs(np.fft.fftshift(np.fft.ifft2(self.Vtot[len(self.wvl)//2]))), cmap='turbo')
         else :
             ax.pcolor(xaxis, yaxis, abs(np.fft.fftshift(np.fft.ifft2(self.Vtot))), cmap='turbo')
         ax.set_xlabel(xlabel), ax.set_ylabel(ylabel)
@@ -583,7 +595,6 @@ class model :
             "===========================================\n"
             "YSO model (as defined in CLAY) \n"
             f"The type of model is : {self.model}\n"
-            f"Input parameters : {self.params.keys()}\n"
             "===========================================\n"
         )
 
@@ -624,7 +635,7 @@ class complexModel:
             
         fig, ax = plt.subplots()
         if "Lazar" in self.models :
-            pl = ax.pcolor(xaxis, yaxis, abs(self.Vtot[len(self.Lambda)//2])**2, vmin=0, vmax=1, cmap='nipy_spectral')
+            pl = ax.pcolor(xaxis, yaxis, abs(self.Vtot[len(self.wvl)//2])**2, vmin=0, vmax=1, cmap='nipy_spectral')
         else :
             pl = ax.pcolor(xaxis, yaxis, abs(self.Vtot)**2, vmin=0, vmax=1, cmap='nipy_spectral')
         ax.set_xlabel(xlabel), ax.set_ylabel(ylabel)
