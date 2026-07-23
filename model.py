@@ -16,6 +16,11 @@ import CLAY.datahandling as dh
 import scipy.stats as stats
 import corner
 
+def removekey(d, key):
+    r = dict(d)
+    del r[key]
+    return r
+
 def compute_chi2( data, error, model, reduced=True ):
     N_fp = model.ndim
     N = model.Vtot.size
@@ -89,13 +94,13 @@ def get_bestModel(model, sampler):
 #     return f'chi2r={np.round(chi2r,decimals=2)} +/- {np.round(echi2r,decimals=2)}'
 
 
-class fitter:
+class Continuum_fitter:
     """
-    A class that gathers data and model to eventually fit the model to the data
+    A class that gathers data and model to eventually fit the model to the continuum data
     methods to : initialize priors, run a fit, NOT plot the results
     interesting Plots :
     Data alone / Model alone / Model vs data 
-    The "fit" class is the one suited to recover results from a past fit
+    The "Continuum_fit" class is the one suited to recover results from a past fit
     """
     def __init__(self, data, model):
         self.u, self.v = data.u, data.v
@@ -204,9 +209,95 @@ class fitter:
     #     self.free_params
 
 
-class fit:
+class Line_fitter:
     """
-    A class that recovers the result file from a previous fit to play with it
-    """ 
-    def __init__(self, file_path):
-        self.fpath = file_path
+    A class that gathers data and model to eventually fit the model to pure-line data
+    methods to : initialize priors, run a fit, NOT plot the results
+    interesting Plots :
+    Data alone / Model alone / Model vs data 
+    The "Continuum_fit" class is the one suited to recover results from a past fit
+    """
+    def __init__(self, data, model):
+        self.B, self.wvl = data.B_line, data.wvl_line
+        self.u, self.v = 2*np.pi*self.B[0]/self.wvl[:,None,:], 2*np.pi*self.B[1]/self.wvl[:,None,:]
+        self.freqs = np.hypot( self.u, self.v )
+        self.Vtotmod = model.Vtot
+        self.V2dat, self.e_V2dat = data.V_pl**2, 2*data.V_pl*data.e_V_pl
+        self.model = model
+    # self.args = (argx, argy, arge)
+    
+    def __log_likelihood(self, params, x, ydat, yerr):
+        dict_params = {i:n for i,n in zip(self.model.Model_params.keys(),params)}
+        upd_mod = objs.model(self.u, self.v, self.wvl, self.model.model, dict_params )
+        ymod = (abs(upd_mod.Vtot)**2).flatten()
+        pr = -0.5*np.sum( (ydat-ymod)**2 / yerr**2 )
+        return pr
+    
+    def __log_prior(self, params):
+        for p, l, L in zip(params, self.lims[0],self.lims[1]):
+            if not (l <= p <= L):
+                return -np.inf
+        return 0.0
+    
+    def __log_probability(self, params, x, y, yerr):
+        lp = self.__log_prior( params )
+        if not np.isfinite( lp ):
+            return -np.inf
+        return lp + self.__log_likelihood( params, x, y, yerr )
+    
+    def prepare_run( self, nwalkers, nsteps, pos_init=[], prior=[], doNotFit=[], lims=[], sigma=[] ):
+        """
+        nwalkers [int] (1) = number of walkers used.
+        nstep [int] (1) = number of steps performed by each walker overall.
+        pos_init [float] (Nparams) = [pos1, pos2] list of values taken as initial guess for each parameter 
+        prior[str] (Nparams/1) = [prior1, prior2]  string or list of string detailing the priors applied 
+                                         to each parameter (list) or for all (str). Possible values
+                                         include "gaussian" or "uniform".
+        sigma [float] (Nparams) = Gaussian dispersion around the initial guess (not used for "uniform").
+        """
+        if len(doNotFit) > 0 :
+            for key in doNotFit :
+                self.model.Model_params = removekey( self.model.Model_params, key )
+        self.nwalkers, self.nsteps = nwalkers, nsteps 
+        self.pos_init = pos_init
+        self.ndim = len(pos_init.values())
+        self.lims = lims
+        if not (len(pos_init.values()) == 0) :
+            if prior == "gaussian":
+                self.pos = np.zeros((self.nwalkers, self.ndim)) 
+                for p in self.pos:
+                    p[:] = stats.truncnorm((np.asarray(self.lims[0]) - np.asarray(list(pos_init.values())))/sigma, 
+                                           (np.asarray(self.lims[1]) - np.asarray(list(pos_init.values())))/sigma, 
+                                           loc=list(pos_init.values()), scale=sigma).rvs()
+            elif prior == "uniform" :
+                self.pos = np.random.uniform( low=self.lims[0], high=self.lims[1], size=( self.nwalkers, self.ndim))
+            else :
+                print( 'Error : type of initial conditions unknown, sets uniform' )
+                self.pos = np.random.uniform( low=self.lims[0], high=self.lims[1], size=(self.nwalkers, self.ndim) )
+         
+        else :
+            return "Error : no prior given, cannot prepare the run"
+        
+        argsx = self.freqs.flatten()
+        argsy = self.V2dat.flatten()
+        argse = self.e_V2dat.flatten()
+        self.args = ( argsx, argsy, argse )
+    
+    def run_fit(self, filename="CLAY_MCMC_Run.h5") :
+        backend = emcee.backends.HDFBackend( filename )
+        backend.reset( self.nwalkers, self.ndim )
+        sampler = emcee.EnsembleSampler( self.nwalkers, self.ndim, self.__log_probability, args=self.args )
+        sampler.run_mcmc( self.pos, self.nsteps, progress=True )
+        return sampler
+
+
+        
+
+
+
+# class Continuum_fit:
+#     """
+#     A class that recovers the result file from a previous fit to play with it
+#     """ 
+#     def __init__(self, file_path):
+#         self.fpath = file_path

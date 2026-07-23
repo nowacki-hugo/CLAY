@@ -748,7 +748,7 @@ class emission_line:
         self.compute_pureline()
 
 
-    def plot_astrometry(self, vmin=-200, vmax=200, axis_lim=((150,-150),(-150,150)), axis_unit='muas'):
+    def plot_astrometry(self, vmin=-200, vmax=200, phimin=None, phimax=None, axis_lim=((150,-150),(-150,150)), axis_unit='muas'):
         # Must only apply to pure line data
         if not self.pl_comp :
             raise ValueError("Need to compute pure-line quantities and \n"
@@ -758,7 +758,7 @@ class emission_line:
         e_x, e_y = rad2mas(self.e_x_line), rad2mas(self.e_y_line)
         
                
-        gs_kw = dict(width_ratios=[ 1, 1, 1, 2], height_ratios=[1, 1])
+        gs_kw = dict(width_ratios=[ 1, 1, 1, 2], height_ratios=[1, 1], hspace=0.02)
         fig, axd = plt.subplot_mosaic([[0, 1, 2, 'ax1'], [3, 4, 5, 'ax1']], gridspec_kw=gs_kw, figsize=(19.6, 6.5), \
                                       layout="constrained")
         ax1 = axd['ax1']
@@ -775,6 +775,7 @@ class emission_line:
         mean_x, e_mean_x = x, e_x
         mean_y, e_mean_y = y, e_y
         
+        ##### For future clean integration : continuum photocenter + star radius
         # circle1 = plt.Circle((-cont_baricenter[0]*pixscale/sampling*1000, -cont_baricenter[1]*pixscale/sampling*1000), 1*cont_err*pixscale/sampling*1000, fill=True, color='cyan', alpha=0.3, ec='k')
         # circle2 = plt.Circle((-cont_baricenter[0]*pixscale/sampling*1000, -cont_baricenter[1]*pixscale/sampling*1000), 2*cont_err*pixscale/sampling*1000, fill=True, color='cyan', alpha=0.2, ec='k')
         # circle3 = plt.Circle((-cont_baricenter[0]*pixscale/sampling*1000, -cont_baricenter[1]*pixscale/sampling*1000), 3*cont_err*pixscale/sampling*1000, fill=True, color='cyan', alpha=0.1, ec='k')
@@ -783,27 +784,36 @@ class emission_line:
         # ax1.scatter(-cont_baricenter[0]*pixscale/sampling*1000, -cont_baricenter[1]*pixscale/sampling*1000, marker='*', color='cyan', ec='k', s=1200, label='Star position', zorder=12)
         # ax1.plot( [-1000, 1000], [-np.tan(np.pi/2 - pa*np.pi/180)*1000, np.tan(np.pi/2 - pa*np.pi/180)*1000], ls='dashed', color='gold')
         # ax1.fill_between([-1000, 1000], [-np.tan(np.pi/2 - (pa-30)*np.pi/180)*1000, np.tan(np.pi/2 - (pa-30)*np.pi/180)*1000], [-np.tan(np.pi/2 - (pa+30)*np.pi/180)*1000, np.tan(np.pi/2 - (pa+30)*np.pi/180)*1000], color='gold', alpha=0.2 )
-        
-    
-        ax1.scatter(x, y)
         for i in range( self.Nvel ):
-            ax1.errorbar( mean_x[i], mean_y[i], xerr=e_mean_x[i], yerr=e_mean_y[i], linewidth=2.5, color='k', ecolor='k', mfc=self.clbr_Nvel[i], ms=10, linestyle='None', marker='s', capsize=6, capthick=2.5, label='Median Shifts' )
+            ax1.errorbar( mean_x[i], mean_y[i], xerr=e_mean_x[i], yerr=e_mean_y[i], linewidth=2.5, color='k', ecolor='k', mfc=self.clbr_Nvel[i], ms=10, linestyle='None', marker='o', capsize=6, capthick=2.5, label='Median Shifts' )
         ax1.set_xlim( axis_lim[0] ), ax1.set_ylim( axis_lim[1] )
         c1 = plt.colorbar(mpl.cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=min(self.vlineMin,-self.vlineMax),vmax=max(self.vlineMax, -self.vlineMin)), \
                 cmap=mpl.colormaps['seismic']), location='right', pad=0, ax=ax1)
         c1.set_label(label='Velocity (km/s)',labelpad=0)
+        if not phimin or not phimax :
+            ylim = 1.1+np.nanmax(np.nanmedian(self.Phi_pl,0))
         
         for i in range(self.Nbl):
             axd[i].plot(self.vel.T, self.Phi[:,i,:].T, color=self.clbr_Nbl[i], lw=0.5 )
+            
+            axd[i].hlines(0, vmin, vmax, ls='dashed', color='gold', zorder=0)
+            axd[i].vlines(0, -180, 180, ls='dotted', color='k')
             for j in range(self.Nvel):
                 if self.Nobs == 1 :
-                    axd[i].errorbar(self.vel_line[:,j], self.Phi_pl[:,i,j], yerr=self.e_Phi_pl[:,i,j], ms=10, mfc=self.clbr_Nvel[j], color='k', marker='s', linestyle='None', lw=2, capsize=6, capthick=2, zorder=6)
+                    axd[i].errorbar(self.vel_line[:,j], self.Phi_pl[:,i,j], yerr=self.e_Phi_pl[:,i,j], ms=10, mfc=self.clbr_Nvel[j], color='k', marker='o', linestyle='None', lw=2, capsize=6, capthick=2, zorder=6)
                 else :
                     meanv = np.nanmean(self.vel_line, axis=0 )
                     meanphi, e_meanphi = weighted_mean( self.Phi_pl[:,i,j], self.e_Phi_pl[:,i,j], axis=0 )
-                    axd[i].errorbar(meanv[j], meanphi, yerr=e_meanphi, ms=10, mfc=self.clbr_Nvel[j], color='k', marker='s', linestyle='None', lw=2, capsize=6, capthick=2, zorder=6)
+                    axd[i].errorbar(meanv[j], meanphi, yerr=e_meanphi, ms=10, mfc=self.clbr_Nvel[j], color='k', marker='o', linestyle='None', lw=2, capsize=6, capthick=2, zorder=6)
             axd[i].set_xlim(vmin, vmax)
-        
+            if not phimin or not phimax :
+                axd[i].set_ylim( (-ylim, ylim) )
+            else :
+                axd[i].set_ylim( (phimin, phimax) )
+            if ((i==0)|(i==3)) :
+                axd[i].set_ylabel('Differential phase (degrees)')
+            if ((i==3)|(i==4)|(i==5)):
+                axd[i].set_xlabel('Velocity (km/s)')
 
     
     def plot_data(self, vmin, vmax):

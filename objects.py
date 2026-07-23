@@ -188,6 +188,10 @@ class model :
             self.params = {'x0':params.get("x0",0), 'y0':params.get("y0",0)}
             self.keys = self.params.keys
             self.Vtot = self.__pointSource(params)
+        
+        elif model == 'Gauss' :
+            self.Vtot = self.__elongGauss( params )
+            self.Model_params = {"x0":params.get('x0',0), "y0":params.get('y0',0), "a":params.get('a',1), "inc":params.get('inc',0), "pa":params.get('pa',0)}
             
         elif model =='LDD' :
             self.Vtot = self.__sqrtLD(params)
